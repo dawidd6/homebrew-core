@@ -1,11 +1,10 @@
 class Brpc < Formula
   desc "Better RPC framework"
   homepage "https://brpc.apache.org/"
-  url "https://www.apache.org/dyn/closer.lua?path=brpc/1.16.0/apache-brpc-1.16.0-src.tar.gz"
-  mirror "https://archive.apache.org/dist/brpc/1.16.0/apache-brpc-1.16.0-src.tar.gz"
-  sha256 "4d5e84048e12512c008d24e52c9e0baa876b5f3f9b06f0aead38b55ea248fdc3"
+  url "https://www.apache.org/dyn/closer.lua?path=brpc/1.17.0/apache-brpc-1.17.0-src.tar.gz"
+  mirror "https://archive.apache.org/dist/brpc/1.17.0/apache-brpc-1.17.0-src.tar.gz"
+  sha256 "30fc544c74ef51419d262d279571c2c1b5db7dda1bc3bad893b1397d676fd02a"
   license "Apache-2.0"
-  revision 3
   head "https://github.com/apache/brpc.git", branch: "master"
 
   bottle do
@@ -28,12 +27,9 @@ class Brpc < Formula
     depends_on "pkgconf" => :test
   end
 
-  # Apply open PR to support Protobuf 34
-  # PR ref: https://github.com/apache/brpc/pull/3241
-  patch do
-    url "https://github.com/apache/brpc/commit/09b50d2c144e20e687c53829c89138caa7f1f31c.patch?full_index=1"
-    sha256 "85536080d6ef84b446c7a3277dd0a6b8ac9672366bde8709abb4e592dc5f61b5"
-  end
+  # Guard the Linux-only SO_BINDTODEVICE socket option, which is missing from the
+  # macOS 14 SDK (added in macOS 15)
+  patch :DATA
 
   def install
     args = %W[
@@ -96,3 +92,26 @@ class Brpc < Formula
     assert_equal "200", shell_output("./test")
   end
 end
+
+__END__
+--- a/src/brpc/socket.cpp
++++ b/src/brpc/socket.cpp
+@@ -1265,12 +1265,18 @@
+     // We need to do async connect (to manage the timeout by ourselves).
+     CHECK_EQ(0, butil::make_non_blocking(sockfd));
+     if (!_device_name.empty()) {
++#ifdef SO_BINDTODEVICE
+         if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE,
+                        _device_name.c_str(), _device_name.size()) < 0) {
+             PLOG(ERROR) << "Fail to set SO_BINDTODEVICE of fd=" << sockfd
+                         << " to device_name=" << _device_name;
+             return -1;
+         }
++#else
++        LOG(ERROR) << "SO_BINDTODEVICE (device_name=" << _device_name
++                   << ") is not supported on this platform";
++        return -1;
++#endif
+     }
+     if (local_side().ip != butil::IP_ANY) {
+         struct sockaddr_storage cli_addr;
