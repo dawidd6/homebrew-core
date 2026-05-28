@@ -3,10 +3,9 @@ class Openvino < Formula
 
   desc "Open Visual Inference And Optimization toolkit for AI inference"
   homepage "https://docs.openvino.ai"
-  url "https://github.com/openvinotoolkit/openvino/archive/refs/tags/2026.1.0.tar.gz"
-  sha256 "8810fcf950c891ed4541e3fa1153f58cd8390a459a87e5fee509cd5ffe64e974"
+  url "https://github.com/openvinotoolkit/openvino/archive/refs/tags/2026.2.0.tar.gz"
+  sha256 "886818c55f887ecc62893c900f259a39ec6c09555ce4dd3d379653ae5b0d6e62"
   license "Apache-2.0"
-  revision 1
   compatibility_version 2
   head "https://github.com/openvinotoolkit/openvino.git", branch: "master"
 
@@ -28,6 +27,7 @@ class Openvino < Formula
   depends_on "flatbuffers" => :build
   depends_on "pkgconf" => [:build, :test]
   depends_on "python@3.14" => [:build, :test]
+  depends_on "xbyak" => :build
   depends_on "abseil"
   depends_on "nlohmann-json"
   depends_on "numpy"
@@ -42,6 +42,7 @@ class Openvino < Formula
     depends_on "automake" => :build
     depends_on "opencl-clhpp-headers" => :build
     depends_on "opencl-headers" => :build
+    depends_on "pybind11" => :build
     depends_on "rapidjson" => :build
     depends_on "opencl-icd-loader"
 
@@ -64,28 +65,6 @@ class Openvino < Formula
     end
   end
 
-  # FIXME: depends_on "pybind11" => :build
-  #
-  # error: static assertion failed due to requirement '0 == detail::constexpr_sum(
-  # detail::is_instantiation<pybind11::call_guard, pybind11::is_method>::value, ...)':
-  # def_property family does not currently support call_guard. Use a py::cpp_function instead
-  resource "pybind11" do
-    url "https://github.com/pybind/pybind11/archive/refs/tags/v3.0.1.tar.gz"
-    sha256 "741633da746b7c738bb71f1854f957b9da660bcd2dce68d71949037f0969d0ca"
-  end
-
-  # FIXME: depends_on "xbyak" => :build
-  #
-  # compute_hash.cpp:418:53: error: use of overloaded operator '+' is ambiguous
-  # (with operand types 'RegistersPool::Reg<Xbyak::Reg64>' and 'const uint64_t'
-  # after https://github.com/herumi/xbyak/commit/689767da682edab65b55e9607535c28902370b08
-  resource "xbyak" do
-    on_intel do
-      url "https://github.com/herumi/xbyak/archive/refs/tags/v7.28.tar.gz"
-      sha256 "c8da3d85fa322303cb312d6315592547952d7bb81f58bf98bc0a26ecd88be495"
-    end
-  end
-
   resource "mlas" do
     url "https://github.com/openvinotoolkit/mlas/archive/d1bc25ec4660cddd87804fcf03b2411b5dfb2e94.tar.gz"
     sha256 "0a44fbfd4b13e8609d66ddac4b11a27c90c1074cde5244c91ad197901666004c"
@@ -105,15 +84,7 @@ class Openvino < Formula
     "python3.14"
   end
 
-  # Fix to add Level-Zero to compilation only when it's needed
-  # Remove patch when available in 2026.2.0 release.
-  patch do
-    url "https://github.com/openvinotoolkit/openvino/commit/b90c26de0ccab964c55fac8519827ecc1b79f473.patch?full_index=1"
-    sha256 "d9110eb566e7404dfebd6d4eb68f87818b392f8391151c543d7b4d2c85089303"
-  end
-
   def install
-    odie "Remove Level-Zero patch" if build.stable? && version >= "2026.2.0"
     # Work around for Protobuf C++ 6.x until OpenVINO adds support
     inreplace "thirdparty/dependencies.cmake", "find_package(Protobuf 5.26.0 ",
                                                "find_package(Protobuf 7.34.0 "
@@ -134,14 +105,10 @@ class Openvino < Formula
     resource("mlas").stage buildpath/"src/plugins/intel_cpu/thirdparty/mlas"
     resource("onednn_cpu").stage buildpath/"src/plugins/intel_cpu/thirdparty/onednn"
     resource("onednn_gpu").stage buildpath/"src/plugins/intel_gpu/thirdparty/onednn_gpu" if OS.linux?
-    resource("pybind11").stage buildpath/"src/bindings/python/thirdparty/pybind11"
 
     if Hardware::CPU.arm?
       resource("arm_compute").stage buildpath/"src/plugins/intel_cpu/thirdparty/ComputeLibrary"
       resource("arm_kleidiai").stage buildpath/"src/plugins/intel_cpu/thirdparty/kleidiai"
-    else
-      # TODO: Remove once able to build with xbyak >= 7.29
-      resource("xbyak").stage buildpath/"thirdparty/xbyak"
     end
 
     cmake_args = %w[
